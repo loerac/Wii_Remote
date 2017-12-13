@@ -171,6 +171,8 @@ while True:
     # Controlling the motors with the Accelerometer
     else:
         if(button & cwiid.BTN_B or (not bool(forward))):
+            GPIO.output(EN_1, GPIO.LOW)
+            GPIO.output(EN_2, GPIO.LOW)
             print("\n\nCalibrating: Please hold the Wii Remote still")
             calibrate()
             print("\n\nDone calibrating")
