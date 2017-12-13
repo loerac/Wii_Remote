@@ -25,6 +25,10 @@ except RuntimeError:
 delay = 0.25
 mode = 1
 motor_stop = 0.2
+forward = {}
+reverse = {}
+left = {}
+right = {}
 
 # Initialize motor control
 GPIO.setmode(GPIO.BCM)
@@ -48,8 +52,9 @@ print"Ready for use"
 wii.rpt_mode = cwiid.RPT_BTN
 wii.rpt_mode = cwiid.RPT_BTN | cwiid.RPT_ACC
 
-def d_pad(left_motor,right_motor):
-    if left_motor != -1 or right_motor != -1:
+# Deciding which direction to move the motors
+def motor_out(left_motor,right_motor):
+    if left_motor != -1 and right_motor != -1:
         GPIO.output(EN_1,GPIO.HIGH)
         GPIO.output(EN_2,GPIO.HIGH)
         GPIO.output(DIR_1,left_motor)
@@ -57,6 +62,67 @@ def d_pad(left_motor,right_motor):
     sleep(motor_stop)
     GPIO.output(EN_1, GPIO.LOW)
     GPIO.output(EN_2, GPIO.LOW)
+
+def accel():
+    acc_x = 0
+    acc_y = 0
+    # Will give a string value with '(', ',', ')' and ' '
+    axis = str(wii.state['acc'])
+    acc = ""
+    for i in range(1,len(axis)):
+        # Get the value of the accelerometer of x, y, z without the other characters
+        if(axis[i]=='(' or axis[i]==',' or axis[i]==')' or axis[i]==' ' and acc!=''):
+            if(acc_x == 0):
+                acc_x = int(acc)
+            elif(acc_y == 0):
+                acc_y = int(acc)
+            else:
+                return acc_x,acc_y,int(acc)
+            acc = ""
+        else:
+            acc += axis[i]
+    return 0,0,0
+
+def calibrate():
+    cal = 100
+    pos = ['FORWARD', 'REVERSE', 'LEFT', 'RIGHT']
+    for i in range(len(pos)):
+        acc_x = 0
+        acc_y = 0
+        acc_z = 0
+        print "Tilt Wii Remote to :",pos[i], "position"
+        sleep(3)
+        while cal:
+            # Get an average reading on the current state of the remote
+            x,y,z = accel()
+            acc_x += x
+            acc_y += y
+            acc_z += z
+            sleep(0.01)
+            cal -= 1
+        cal = 100
+
+        # Set the keys to a value in the dictionary
+        if pos[i] == 'FORWARD':
+            forward['x'] = (acc_x / cal)
+            forward['y'] = (acc_y / cal)
+            forward['z'] = (acc_z / cal)
+            print "FORWARD DICT:",forward
+        elif pos[i] == 'REVERSE':
+            reverse['x'] = (acc_x / cal)
+            reverse['y'] = (acc_y / cal)
+            reverse['z'] = (acc_z / cal)
+            print "REVERSE DICT:",reverse
+        elif pos[i] == 'LEFT':
+            left['x'] = (acc_x / cal)
+            left['y'] = (acc_y / cal)
+            left['z'] = (acc_z / cal)
+            print "LEFT DICT:",left
+        elif pos[i] == 'RIGHT':
+            right['x'] = (acc_x / cal)
+            right['y'] = (acc_y / cal)
+            right['z'] = (acc_z / cal)
+            print "RIGHT DICT:",right
 
 while True:
     button = wii.state['buttons']
@@ -75,6 +141,8 @@ while True:
     # Choosing whether to control the motors using the
     # D-Pad by pressing button 1
     if(button & cwiid.BTN_1):
+        GPIO.output(EN_1, GPIO.LOW)
+        GPIO.output(EN_2, GPIO.LOW)
         mode = 1
         wii.led = 9
         print"D-Mode activated"
@@ -88,97 +156,68 @@ while True:
 
     # Controlling the motors with the D-Pad
     if(mode):
-        left_motor=-1
-        right_motor=-1
         if(button & cwiid.BTN_LEFT):
-            right_motor=1
+            print("LEFT")
+            motor_out(0,1)
         if(button & cwiid.BTN_RIGHT):
-            left_motor=1
+            print("RIGHT")
+            motor_out(1,0)
         if(button & cwiid.BTN_UP):
-            right_motor=1
-            left_motor=1
+            print("FORWARD")
+            motor_out(1,1)
         if(button & cwiid.BTN_DOWN):
-            right_motor=0
-            left_motor=0
-        d_pad(left_motor,right_motor)
+            print("REVERSE")
+            motor_out(0,0)
     # Controlling the motors with the Accelerometer
     else:
-        accel()
-        if(button & cwiid.BTN_B):
-            print("Calibrating: Please hold the Wii Remote still")
-            #check= 0
-            cali = 50
-            acc_x_list = []
-            acc_y_list = []
-            acc_z_list = []
-            while cali:
-                temp = str(wii.state['acc'])
-                acc = ""
-                test = ""
-                acc_x = 0
-                acc_y = 0
-                acc_z = 0
-                for i in range(1, len(temp)):
-                    if(temp[i]=='(' or temp[i]==',' or temp[i]==')' or temp[i]==' ' and acc!=''):
-                        if(acc_x == 0):
-                            acc_x = int(acc)
-                            acc_x_list.append(acc_x)
-                            test += "acc_x: %s" %(acc_x)
-                        elif(acc_y == 0):
-                            acc_y = int(acc)
-                            acc_y_list.append(acc_y)
-                            test += "  acc_y: %s" %(acc_y)
-                        elif(acc_z == 0):
-                            acc_z = int(acc)
-                            acc_z_list.append(acc_z)
-                            test += "  acc_z: %s" %(acc_z)
-                        acc = ""
-                    else:
-                        acc += temp[i]
-                sleep(0.01)
-                #check = (button & cwiid.BTN_B)
-                cali -= 1
-                #print "RUN:",cali,test
-            acc_x = 0
-            acc_y = 0
-            acc_z = 0
-            cali = 50
-            for i in range(0,(cali - 1)):
-                acc_x += acc_x_list[i]
-                acc_y += acc_y_list[i]
-                acc_z += acc_z_list[i]
-            sleep(delay)
-            print "x:",acc_x / cali
-            print "y:",acc_y / cali
-            print "z:",acc_z / cali
+        if(button & cwiid.BTN_B or (not bool(forward))):
+            print("\n\nCalibrating: Please hold the Wii Remote still")
+            calibrate()
+            print("\n\nDone calibrating")
+            print("3")
             sleep(1)
+            print("2")
+            sleep(1)
+            print("1")
+            sleep(1)
+            print("KA-CHOW")
 
-def d_pad():
-    if(button & cwiid.BTN_LEFT):
-        print("LEFT")
+        # Brakes while using the accelerometer
+        if(button & cwiid.BTN_A):
+            GPIO.output(EN_1, GPIO.LOW)
+            GPIO.output(EN_2, GPIO.LOW)
+            print("E-BRAKES ACTIVATED")
+        else:
+            GPIO.output(EN_1, GPIO.HIGH)
+            GPIO.output(EN_2, GPIO.HIGH)
 
-        GPIO.output(EN_1, GPIO.HIGH)
-        GPIO.output(EN_2, GPIO.HIGH)
-        GPIO.output(DIR_1, False)
-        GPIO.output(DIR_2, True)
-    if(button & cwiid.BTN_RIGHT):
-        print("RIGHT")
-        GPIO.output(EN_1, GPIO.HIGH)
-        GPIO.output(EN_2, GPIO.HIGH)
-        GPIO.output(DIR_1, GPIO.HIGH)
-        GPIO.output(DIR_2, GPIO.LOW)
-    if(button & cwiid.BTN_UP):
-        print("FORWARD")
-        GPIO.output(EN_1, GPIO.HIGH)
-        GPIO.output(EN_2, GPIO.HIGH)
-        GPIO.output(DIR_1, GPIO.HIGH)
-        GPIO.output(DIR_2, GPIO.HIGH)
-    if(button & cwiid.BTN_DOWN):
-        print("REVERSE")
-        GPIO.output(EN_1, GPIO.HIGH)
-        GPIO.output(EN_2, GPIO.HIGH)
-        GPIO.output(DIR_1, GPIO.LOW)
-        GPIO.output(DIR_2, GPIO.LOW)
-    sleep(motor_stop)
-    GPIO.output(EN_1, GPIO.LOW)
-    GPIO.output(EN_2, GPIO.LOW)
+            # Get current reading values from the accelerometer
+            acc_x,acc_y,acc_z = accel()
+            diff = 7
+
+            # Decide which direction to move
+            if((acc_x < (int(forward['x']) + diff)) and (acc_x > (int(forward['x']) - diff))):
+                if((acc_y < (int(forward['y']) + diff)) and (acc_y > (int(forward['y']) - diff))):
+                    if((acc_z < (int(forward['z']) + diff)) and (acc_z > (int(forward['z']) - diff))):
+                        print("FORWARD")
+                        motor_out(1,1)
+            elif((acc_x < (int(reverse['x']) + diff)) and (acc_x > (int(reverse['x']) - diff))):
+                if((acc_y < (int(reverse['y']) + diff)) and (acc_y > (int(reverse['y']) - diff))):
+                    if((acc_z < (int(reverse['z']) + diff)) and (acc_z > (int(reverse['z']) - diff))):
+                        print("REVERSE")
+                        motor_out(0,0)
+            elif((acc_x < (int(left['x']) + diff)) and (acc_x > (int(left['x']) - diff))):
+                if((acc_y < (int(left['y']) + diff)) and (acc_y > (int(left['y']) - diff))):
+                    if((acc_z < (int(left['z']) + diff)) and (acc_z > (int(left['z']) - diff))):
+                        print("LEFT")
+                        motor_out(0,1)
+            elif((acc_x < (int(right['x']) + diff)) and (acc_x > (int(right['x']) - diff))):
+                if((acc_y < (int(right['y']) + diff)) and (acc_y > (int(right['y']) - diff))):
+                    if((acc_z < (int(right['z']) + diff)) and (acc_z > (int(right['z']) - diff))):
+                        print("RIGHT")
+                        motor_out(1,0)
+            # Stop moving if none of the directions fit
+            else:
+                print("STATIONARY")
+                GPIO.output(EN_1, GPIO.LOW)
+                GPIO.output(EN_2, GPIO.LOW)
